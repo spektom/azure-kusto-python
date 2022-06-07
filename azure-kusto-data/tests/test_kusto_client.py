@@ -5,12 +5,13 @@ import sys
 import pytest
 from mock import patch
 
-from azure.kusto.data import KustoClient, ClientRequestProperties
+from azure.kusto.data import KustoClient, ClientRequestProperties, KustoConnectionStringBuilder
 from azure.kusto.data._cloud_settings import CloudSettings
 from azure.kusto.data.exceptions import KustoMultiApiError
 from azure.kusto.data.helpers import dataframe_from_result_table
 from azure.kusto.data.response import KustoStreamingResponseDataSet
-from tests.kusto_client_common import KustoClientTestsMixin, mocked_requests_post, get_response_first_primary_result, get_table_first_row, proxy_kcsb
+from tests.kusto_client_common import KustoClientTestsMixin, mocked_requests_post, get_response_first_primary_result, \
+    get_table_first_row, proxy_kcsb
 
 PANDAS = False
 try:
@@ -157,4 +158,45 @@ range x from 1 to 10 step 1"""
 
         client._aad_helper.token_provider._init_resources()
 
-        mock_get.assert_called_with("https://somecluster.kusto.windows.net/v1/rest/auth/metadata", proxies=expected_dict)
+        mock_get.assert_called_with("https://somecluster.kusto.windows.net/v1/rest/auth/metadata",
+                                    proxies=expected_dict)
+
+
+    def test_proxy_url_parsing(self):
+        """Test Proxy URL Parsing"""
+        tests = {"https://kusto.test.com": "https://kusto.test.com",
+                 "https://kusto.test.com/": "https://kusto.test.com",
+                 "https://kusto.test.com/test": "https://kusto.test.com/test",
+                 "https://kusto.test.com:4242": "https://kusto.test.com:4242",
+                 "https://kusto.test.com:4242/": "https://kusto.test.com:4242",
+                 "https://kusto.test.com:4242/test": "https://kusto.test.com:4242/test",
+                 "https://kusto.test.com;fed=true": "https://kusto.test.com",
+                 "https://kusto.test.com/;fed=true": "https://kusto.test.com",
+                 "https://kusto.test.com/test;fed=true": "https://kusto.test.com/test",
+                 "https://kusto.test.com:4242;fed=true": "https://kusto.test.com:4242",
+                 "https://kusto.test.com:4242/;fed=true": "https://kusto.test.com:4242",
+                 "https://kusto.test.com:4242/test;fed=true": "https://kusto.test.com:4242/test",
+                 "https://ade.loganalytics.io/subscriptions/da45f7ac-97c0-4fff-ac66-3b6810eb4f65/resourcegroups"
+                     "/some_resource_group/providers/microsoft.operationalinsights/workspaces/some_workspace":
+                 "https://ade.loganalytics.io/subscriptions/da45f7ac-97c0-4fff-ac66-3b6810eb4f65/resourcegroups"
+                     "/some_resource_group/providers/microsoft.operationalinsights/workspaces/some_workspace",
+                 "https://ade.loganalytics.io/subscriptions/da45f7ac-97c0-4fff-ac66-3b6810eb4f65/resourcegroups"
+                     "/some_resource_group/providers/microsoft.operationalinsights/workspaces/some_workspace/":
+                 "https://ade.loganalytics.io/subscriptions/da45f7ac-97c0-4fff-ac66-3b6810eb4f65/resourcegroups"
+                     "/some_resource_group/providers/microsoft.operationalinsights/workspaces/some_workspace",
+                 "https://ade.loganalytics.io:4242/subscriptions/da45f7ac-97c0-4fff-ac66-3b6810eb4f65/resourcegroups"
+                     "/some_resource_group/providers/microsoft.operationalinsights/workspaces/some_workspace/":
+                 "https://ade.loganalytics.io:4242/subscriptions/da45f7ac-97c0-4fff-ac66-3b6810eb4f65/resourcegroups"
+                     "/some_resource_group/providers/microsoft.operationalinsights/workspaces/some_workspace",
+                 "https://ade.loganalytics.io:4242/subscriptions/da45f7ac-97c0-4fff-ac66-3b6810eb4f65/resourcegroups"
+                     "/some_resource_group/providers/microsoft.operationalinsights/workspaces/some_workspace/;fed=true":
+                 "https://ade.loganalytics.io:4242/subscriptions/da45f7ac-97c0-4fff-ac66-3b6810eb4f65"
+                     "/resourcegroups/some_resource_group/providers/microsoft.operationalinsights/workspaces"
+                     "/some_workspace",
+                 "https://kusto.aria.microsoft.com": "https://kusto.aria.microsoft.com",
+                 "https://kusto.aria.microsoft.com/": "https://kusto.aria.microsoft.com",
+                 "https://kusto.aria.microsoft.com/;fed=true": "https://kusto.aria.microsoft.com"}
+        for entry_key, entry_value in tests.items():
+            kcsb = KustoConnectionStringBuilder.with_aad_user_token_authentication(entry_key, "test")
+            client = KustoClient(kcsb)
+            assert(entry_value, client._kusto_cluster)
